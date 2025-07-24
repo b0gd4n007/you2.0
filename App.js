@@ -10,8 +10,6 @@ import {
   Platform,
 } from 'react-native';
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
 export default function App() {
   const [inputText, setInputText] = useState('');
   const [expanded, setExpanded] = useState(null);
@@ -52,8 +50,8 @@ export default function App() {
                 {level.charAt(0).toUpperCase() + level.slice(1)}
               </Text>
             </TouchableOpacity>
-{expanded === level && Array.isArray(threads[level]) &&
-  threads[level].map((entry, idx) => (
+            {expanded === level && Array.isArray(threads[level]) &&
+              threads[level].map((entry, idx) => (
                 <View key={idx} style={styles.entryBlock}>
                   <Text style={styles.entryText}>{entry.text}</Text>
                   <Text style={styles.timestamp}>{entry.timestamp}</Text>
