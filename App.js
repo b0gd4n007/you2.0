@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,30 +9,70 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function App() {
   const [inputText, setInputText] = useState('');
-  const [expanded, setExpanded] = useState(null);
+  const [expandedLevel, setExpandedLevel] = useState(null);
+  const [expandedThreads, setExpandedThreads] = useState({});
   const [threads, setThreads] = useState({
     baseline: [],
     execution: [],
     creative: [],
   });
 
-  const toggleExpand = (level) => {
-    setExpanded(expanded === level ? null : level);
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('you2_threads');
+        if (stored) {
+          setThreads(JSON.parse(stored));
+        }
+      } catch (e) {
+        console.log('Error loading threads:', e);
+      }
+    };
+    loadData();
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.setItem('you2_threads', JSON.stringify(threads));
+  }, [threads]);
+
+  const toggleLevel = (level) => {
+    setExpandedLevel((prev) => (prev === level ? null : level));
+  };
+
+  const toggleThread = (index) => {
+    setExpandedThreads((prev) => ({
+      ...prev,
+      [index]: !prev[index],
+    }));
   };
 
   const handleSend = () => {
-    if (!inputText.trim() || !expanded) return;
-    const newEntry = {
-      text: inputText.trim(),
-      timestamp: new Date().toLocaleTimeString(),
-    };
-    const updated = {
-      ...threads,
-      [expanded]: [...threads[expanded], newEntry],
-    };
+    if (!inputText.trim() || !expandedLevel) return;
+
+    const updated = { ...threads };
+
+    const activeThreadIndex = Object.keys(expandedThreads).find(
+      (k) => expandedThreads[k]
+    );
+
+    if (activeThreadIndex !== undefined) {
+      const index = parseInt(activeThreadIndex);
+      updated[expandedLevel][index].steps.push({
+        text: inputText.trim(),
+        timestamp: new Date().toLocaleTimeString(),
+      });
+    } else {
+      updated[expandedLevel].push({
+        text: inputText.trim(),
+        timestamp: new Date().toLocaleTimeString(),
+        steps: [],
+      });
+    }
+
     setThreads(updated);
     setInputText('');
   };
@@ -45,16 +85,34 @@ export default function App() {
       <ScrollView contentContainerStyle={styles.scroll}>
         {['baseline', 'execution', 'creative'].map((level) => (
           <View key={level} style={styles.block}>
-            <TouchableOpacity onPress={() => toggleExpand(level)}>
+            <TouchableOpacity onPress={() => toggleLevel(level)}>
               <Text style={styles.title}>
                 {level.charAt(0).toUpperCase() + level.slice(1)}
               </Text>
             </TouchableOpacity>
-            {expanded === level && Array.isArray(threads[level]) &&
-              threads[level].map((entry, idx) => (
-                <View key={idx} style={styles.entryBlock}>
-                  <Text style={styles.entryText}>{entry.text}</Text>
-                  <Text style={styles.timestamp}>{entry.timestamp}</Text>
+
+            {expandedLevel === level &&
+              threads[level].map((thread, index) => (
+                <View key={index} style={styles.threadBlock}>
+                  <View style={styles.threadHeader}>
+                    <TouchableOpacity onPress={() => toggleThread(index)}>
+                      <Text style={styles.plusButton}>
+                        {expandedThreads[index] ? '-' : '+'}
+                      </Text>
+                    </TouchableOpacity>
+                    <View>
+                      <Text style={styles.threadText}>• {thread.text}</Text>
+                      <Text style={styles.timestamp}>{thread.timestamp}</Text>
+                    </View>
+                  </View>
+
+                  {expandedThreads[index] &&
+                    thread.steps.map((step, idx) => (
+                      <View key={idx} style={styles.stepBlock}>
+                        <Text style={styles.stepText}>- {step.text}</Text>
+                        <Text style={styles.timestamp}>{step.timestamp}</Text>
+                      </View>
+                    ))}
                 </View>
               ))}
           </View>
@@ -67,11 +125,13 @@ export default function App() {
           value={inputText}
           onChangeText={setInputText}
           placeholder={
-            expanded
-              ? `Write in ${expanded.charAt(0).toUpperCase() + expanded.slice(1)}...`
-              : 'Tap a section to write...'
+            !expandedLevel
+              ? 'Tap a section to begin...'
+              : Object.values(expandedThreads).includes(true)
+              ? 'Add step...'
+              : 'Add new thread...'
           }
-          editable={!!expanded}
+          editable={!!expandedLevel}
         />
         <TouchableOpacity onPress={handleSend} style={styles.sendButton}>
           <Text style={styles.sendText}>Send</Text>
@@ -96,14 +156,33 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   title: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-  entryBlock: {
-    backgroundColor: '#eee',
+  threadBlock: {
+    marginTop: 12,
+    backgroundColor: '#f0f0f0',
     padding: 10,
     borderRadius: 8,
-    marginTop: 10,
   },
-  entryText: { fontSize: 16 },
-  timestamp: { fontSize: 12, color: '#888', marginTop: 4 },
+  threadHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  plusButton: {
+    fontSize: 20,
+    marginRight: 8,
+    paddingHorizontal: 6,
+    fontWeight: 'bold',
+  },
+  threadText: { fontSize: 16 },
+  stepBlock: {
+    marginTop: 8,
+    marginLeft: 10,
+    backgroundColor: '#e0e0e0',
+    padding: 8,
+    borderRadius: 6,
+  },
+  stepText: { fontSize: 15 },
+  timestamp: { fontSize: 11, color: '#888', marginTop: 2 },
   inputBar: {
     flexDirection: 'row',
     padding: 12,
