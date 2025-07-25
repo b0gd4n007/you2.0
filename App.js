@@ -54,16 +54,15 @@ export default function App() {
     if (!inputText.trim() || !expandedLevel) return;
 
     const updated = { ...threads };
-
-    const activeThreadIndex = Object.keys(expandedThreads).find(
-      (k) => expandedThreads[k]
+    const threadIndex = threads[expandedLevel].findIndex(
+      (_, i) => expandedThreads[i]
     );
 
-    if (activeThreadIndex !== undefined) {
-      const index = parseInt(activeThreadIndex);
-      updated[expandedLevel][index].steps.push({
+    if (threadIndex !== -1) {
+      updated[expandedLevel][threadIndex].steps.push({
         text: inputText.trim(),
         timestamp: new Date().toLocaleTimeString(),
+        steps: [],
       });
     } else {
       updated[expandedLevel].push({
@@ -75,6 +74,77 @@ export default function App() {
 
     setThreads(updated);
     setInputText('');
+  };
+
+  const addSubstep = (path, newText) => {
+    const updated = { ...threads };
+    let node = updated[expandedLevel];
+
+    for (let i = 0; i < path.length - 1; i++) {
+      node = node[path[i]].steps;
+    }
+
+    node[path[path.length - 1]].steps.push({
+      text: newText,
+      timestamp: new Date().toLocaleTimeString(),
+      steps: [],
+    });
+
+    setThreads(updated);
+  };
+
+  const RenderSteps = ({ steps, path = [], depth = 1 }) => {
+    const [activeInput, setActiveInput] = useState(null);
+    const [subInputText, setSubInputText] = useState('');
+
+    return steps.map((step, idx) => {
+      const currentPath = [...path, idx];
+      return (
+        <View key={idx} style={[styles.stepBlock, { marginLeft: depth * 10 }]}>
+          <Text style={styles.stepText}>- {step.text}</Text>
+          <Text style={styles.timestamp}>{step.timestamp}</Text>
+
+          {/* Add substep button */}
+          <TouchableOpacity
+            onPress={() =>
+              setActiveInput((prev) =>
+                prev === idx ? null : idx
+              )
+            }
+          >
+            <Text style={styles.subAdd}>＋ Add substep</Text>
+          </TouchableOpacity>
+
+          {/* Substep input */}
+          {activeInput === idx && (
+            <View style={styles.subInputRow}>
+              <TextInput
+                value={subInputText}
+                onChangeText={setSubInputText}
+                placeholder="Substep..."
+                style={styles.subInput}
+              />
+              <TouchableOpacity
+                onPress={() => {
+                  if (subInputText.trim()) {
+                    addSubstep(currentPath, subInputText.trim());
+                    setSubInputText('');
+                    setActiveInput(null);
+                  }
+                }}
+                style={styles.subSendButton}
+              >
+                <Text style={styles.sendText}>Add</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {step.steps && step.steps.length > 0 && (
+            <RenderSteps steps={step.steps} path={currentPath} depth={depth + 1} />
+          )}
+        </View>
+      );
+    });
   };
 
   return (
@@ -106,13 +176,9 @@ export default function App() {
                     </View>
                   </View>
 
-                  {expandedThreads[index] &&
-                    thread.steps.map((step, idx) => (
-                      <View key={idx} style={styles.stepBlock}>
-                        <Text style={styles.stepText}>- {step.text}</Text>
-                        <Text style={styles.timestamp}>{step.timestamp}</Text>
-                      </View>
-                    ))}
+                  {expandedThreads[index] && (
+                    <RenderSteps steps={thread.steps} path={[index]} />
+                  )}
                 </View>
               ))}
           </View>
@@ -176,7 +242,6 @@ const styles = StyleSheet.create({
   threadText: { fontSize: 16 },
   stepBlock: {
     marginTop: 8,
-    marginLeft: 10,
     backgroundColor: '#e0e0e0',
     padding: 8,
     borderRadius: 6,
@@ -205,4 +270,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendText: { color: '#fff', fontWeight: 'bold' },
+  subAdd: {
+    marginTop: 6,
+    color: '#007AFF',
+    fontSize: 13,
+  },
+  subInputRow: {
+    flexDirection: 'row',
+    marginTop: 6,
+  },
+  subInput: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginRight: 8,
+  },
+  subSendButton: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    borderRadius: 6,
+  },
 });
