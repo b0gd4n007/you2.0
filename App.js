@@ -10,11 +10,24 @@ import {
   Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Provider as PaperProvider, Checkbox } from 'react-native-paper';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function App() {
+  return (
+    <PaperProvider>
+      <SafeAreaView style={{ flex: 1 }} edges={['bottom', 'left', 'right']}>
+        <TaskApp />
+      </SafeAreaView>
+    </PaperProvider>
+  );
+}
+
+function TaskApp() {
   const [inputText, setInputText] = useState('');
   const [expandedLevel, setExpandedLevel] = useState(null);
   const [expandedThreads, setExpandedThreads] = useState({});
+  const [collapsedSteps, setCollapsedSteps] = useState({});
   const [threads, setThreads] = useState({
     baseline: [],
     execution: [],
@@ -50,6 +63,14 @@ export default function App() {
     }));
   };
 
+  const formatTime = (timestamp) => {
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return '';
+    const hours = d.getHours().toString().padStart(2, '0');
+    const minutes = d.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
+  };
+
   const handleSend = () => {
     if (!inputText.trim() || !expandedLevel) return;
 
@@ -58,18 +79,17 @@ export default function App() {
       (_, i) => expandedThreads[i]
     );
 
+    const newItem = {
+      text: inputText.trim(),
+      timestamp: Date.now(),
+      steps: [],
+      completed: false,
+    };
+
     if (threadIndex !== -1) {
-      updated[expandedLevel][threadIndex].steps.push({
-        text: inputText.trim(),
-        timestamp: new Date().toLocaleTimeString(),
-        steps: [],
-      });
+      updated[expandedLevel][threadIndex].steps.push(newItem);
     } else {
-      updated[expandedLevel].push({
-        text: inputText.trim(),
-        timestamp: new Date().toLocaleTimeString(),
-        steps: [],
-      });
+      updated[expandedLevel].push(newItem);
     }
 
     setThreads(updated);
@@ -86,9 +106,31 @@ export default function App() {
 
     node[path[path.length - 1]].steps.push({
       text: newText,
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: Date.now(),
       steps: [],
+      completed: false,
     });
+
+    setThreads(updated);
+  };
+
+  const toggleCollapse = (pathString) => {
+    setCollapsedSteps((prev) => ({
+      ...prev,
+      [pathString]: !prev[pathString],
+    }));
+  };
+
+  const toggleCheckbox = (path) => {
+    const updated = { ...threads };
+    let node = updated[expandedLevel];
+
+    for (let i = 0; i < path.length - 1; i++) {
+      node = node[path[i]].steps;
+    }
+
+    const step = node[path[path.length - 1]];
+    step.completed = !step.completed;
 
     setThreads(updated);
   };
@@ -99,23 +141,40 @@ export default function App() {
 
     return steps.map((step, idx) => {
       const currentPath = [...path, idx];
+      const pathString = currentPath.join('-');
+      const isCollapsed = collapsedSteps[pathString];
+
       return (
         <View key={idx} style={[styles.stepBlock, { marginLeft: depth * 10 }]}>
-          <Text style={styles.stepText}>- {step.text}</Text>
-          <Text style={styles.timestamp}>{step.timestamp}</Text>
+          <View style={styles.stepHeader}>
+            {step.steps.length > 0 && (
+              <TouchableOpacity
+                onPress={() => toggleCollapse(pathString)}
+                style={styles.collapseToggle}
+              >
+                <Text style={{ fontSize: 16, fontWeight: 'bold' }}>
+                  {isCollapsed ? '+' : '-'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            <View style={styles.stepRow}>
+              <Checkbox
+                status={step.completed ? 'checked' : 'unchecked'}
+                onPress={() => toggleCheckbox(currentPath)}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.stepText}>{step.text}</Text>
+                <Text style={styles.timestamp}>{formatTime(step.timestamp)}</Text>
+              </View>
+            </View>
+          </View>
 
-          {/* Add substep button */}
           <TouchableOpacity
-            onPress={() =>
-              setActiveInput((prev) =>
-                prev === idx ? null : idx
-              )
-            }
+            onPress={() => setActiveInput((prev) => (prev === idx ? null : idx))}
           >
             <Text style={styles.subAdd}>＋ Add substep</Text>
           </TouchableOpacity>
 
-          {/* Substep input */}
           {activeInput === idx && (
             <View style={styles.subInputRow}>
               <TextInput
@@ -139,8 +198,12 @@ export default function App() {
             </View>
           )}
 
-          {step.steps && step.steps.length > 0 && (
-            <RenderSteps steps={step.steps} path={currentPath} depth={depth + 1} />
+          {!isCollapsed && step.steps.length > 0 && (
+            <RenderSteps
+              steps={step.steps}
+              path={currentPath}
+              depth={depth + 1}
+            />
           )}
         </View>
       );
@@ -150,9 +213,13 @@ export default function App() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+      >
         {['baseline', 'execution', 'creative'].map((level) => (
           <View key={level} style={styles.block}>
             <TouchableOpacity onPress={() => toggleLevel(level)}>
@@ -172,7 +239,7 @@ export default function App() {
                     </TouchableOpacity>
                     <View>
                       <Text style={styles.threadText}>• {thread.text}</Text>
-                      <Text style={styles.timestamp}>{thread.timestamp}</Text>
+                      <Text style={styles.timestamp}>{formatTime(thread.timestamp)}</Text>
                     </View>
                   </View>
 
@@ -245,6 +312,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#e0e0e0',
     padding: 8,
     borderRadius: 6,
+  },
+  stepHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  collapseToggle: {
+    marginRight: 6,
+    paddingHorizontal: 4,
+  },
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
   },
   stepText: { fontSize: 15 },
   timestamp: { fontSize: 11, color: '#888', marginTop: 2 },
