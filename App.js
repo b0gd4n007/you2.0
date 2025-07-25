@@ -1,24 +1,43 @@
-// App.js
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, KeyboardAvoidingView, Platform, Alert
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  Dimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Provider as PaperProvider, Checkbox, Menu } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const Stack = createNativeStackNavigator();
 
 export default function App() {
   return (
-    <PaperProvider>
-      <SafeAreaView style={{ flex: 1 }} edges={['bottom', 'left', 'right']}>
-        <TaskApp />
-      </SafeAreaView>
-    </PaperProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <PaperProvider>
+        <SafeAreaView style={{ flex: 1 }} edges={['bottom', 'left', 'right']}>
+          <NavigationContainer>
+            <Stack.Navigator screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="Main" component={TaskApp} />
+              <Stack.Screen name="Focus" component={FocusScreen} />
+            </Stack.Navigator>
+          </NavigationContainer>
+        </SafeAreaView>
+      </PaperProvider>
+    </GestureHandlerRootView>
   );
 }
 
-function TaskApp() {
+function TaskApp({ navigation }) {
   const [inputText, setInputText] = useState('');
   const [expandedLevel, setExpandedLevel] = useState(null);
   const [expandedThreads, setExpandedThreads] = useState({});
@@ -56,11 +75,11 @@ function TaskApp() {
   };
 
   const toggleThread = (index) => {
-    setExpandedThreads(prev => ({ ...prev, [index]: !prev[index] }));
+    setExpandedThreads((prev) => ({ ...prev, [index]: !prev[index] }));
   };
 
   const toggleHideCompleted = (level) => {
-    setHideCompleted(prev => ({ ...prev, [level]: !prev[level] }));
+    setHideCompleted((prev) => ({ ...prev, [level]: !prev[level] }));
   };
 
   const handleSend = () => {
@@ -80,53 +99,16 @@ function TaskApp() {
   };
 
   const toggleCollapse = (pathString) => {
-    setCollapsedSteps(prev => ({ ...prev, [pathString]: !prev[pathString] }));
+    setCollapsedSteps((prev) => ({ ...prev, [pathString]: !prev[pathString] }));
   };
 
   const toggleCheckbox = (path) => {
     const updated = { ...threads };
     let node = updated[expandedLevel];
     for (let i = 0; i < path.length - 1; i++) node = node[path[i]].steps;
-    node[path[path.length - 1]].completed = !node[path[path.length - 1]].completed;
+    const step = node[path[path.length - 1]];
+    step.completed = !step.completed;
     setThreads(updated);
-  };
-
-  const RenderSteps = ({ steps, path = [], depth = 1 }) => {
-    const [activeInput, setActiveInput] = useState(null);
-    const [subInputText, setSubInputText] = useState('');
-
-    return steps.map((step, idx) => {
-      if (hideCompleted[expandedLevel] && step.completed) return null;
-      const currentPath = [...path, idx];
-      const pathString = currentPath.join('-');
-      const isCollapsed = collapsedSteps[pathString];
-
-      return (
-        <View key={idx} style={[styles.stepBlock, { marginLeft: depth * 10 }]}>
-          <View style={styles.stepHeader}>
-            {step.steps.length > 0 && (
-              <TouchableOpacity onPress={() => toggleCollapse(pathString)} style={styles.collapseToggle}>
-                <Text style={{ fontSize: 16, fontWeight: 'bold' }}>{isCollapsed ? '+' : '-'}</Text>
-              </TouchableOpacity>
-            )}
-            <View style={styles.stepRow}>
-              <Checkbox
-                status={step.completed ? 'checked' : 'unchecked'}
-                onPress={() => toggleCheckbox(currentPath)}
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.stepText}>{step.text}</Text>
-                <Text style={styles.timestamp}>{formatTime(step.timestamp)}</Text>
-              </View>
-            </View>
-          </View>
-
-          {!isCollapsed && step.steps.length > 0 && (
-            <RenderSteps steps={step.steps} path={currentPath} depth={depth + 1} />
-          )}
-        </View>
-      );
-    });
   };
 
   const archiveThread = () => {
@@ -157,6 +139,46 @@ function TaskApp() {
     setMenuVisible(true);
   };
 
+  const focusThread = () => {
+    if (!selectedThread) return;
+    const { level, index } = selectedThread;
+    const thread = threads[level][index];
+    setMenuVisible(false);
+    navigation.navigate('Focus', { item: thread });
+  };
+  const RenderSteps = ({ steps, path = [], depth = 1 }) =>
+    steps.map((step, idx) => {
+      const currentPath = [...path, idx];
+      const pathString = currentPath.join('-');
+      const isCollapsed = collapsedSteps[pathString];
+
+      return (
+        <View key={idx} style={[styles.stepBlock, { marginLeft: depth * 10 }]}>
+          <View style={styles.stepHeader}>
+            {step.steps.length > 0 && (
+              <TouchableOpacity onPress={() => toggleCollapse(pathString)} style={styles.collapseToggle}>
+                <Text style={{ fontSize: 16, fontWeight: 'bold' }}>{isCollapsed ? '+' : '-'}</Text>
+              </TouchableOpacity>
+            )}
+            <View style={styles.stepRow}>
+              <Checkbox
+                status={step.completed ? 'checked' : 'unchecked'}
+                onPress={() => toggleCheckbox(currentPath)}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.stepText}>{step.text}</Text>
+                <Text style={styles.timestamp}>{formatTime(step.timestamp)}</Text>
+              </View>
+            </View>
+          </View>
+
+          {!isCollapsed && step.steps?.length > 0 && (
+            <RenderSteps steps={step.steps} path={currentPath} depth={depth + 1} />
+          )}
+        </View>
+      );
+    });
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -170,7 +192,7 @@ function TaskApp() {
       >
         <Menu.Item onPress={archiveThread} title="🗂 Archive" />
         <Menu.Item onPress={deleteThread} title="🗑 Delete" />
-        <Menu.Item onPress={() => { setMenuVisible(false); }} title="🎯 Focus (soon)" />
+        <Menu.Item onPress={focusThread} title="🎯 Focus" />
       </Menu>
 
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
@@ -223,11 +245,13 @@ function TaskApp() {
           style={styles.input}
           value={inputText}
           onChangeText={setInputText}
-          placeholder={!expandedLevel
-            ? 'Tap a section to begin...'
-            : Object.values(expandedThreads).includes(true)
+          placeholder={
+            !expandedLevel
+              ? 'Tap a section to begin...'
+              : Object.values(expandedThreads).includes(true)
               ? 'Add step...'
-              : 'Add new thread...'}
+              : 'Add new thread...'
+          }
           editable={!!expandedLevel}
         />
         <TouchableOpacity onPress={handleSend} style={styles.sendButton}>
@@ -235,6 +259,28 @@ function TaskApp() {
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
+  );
+}
+
+function FocusScreen({ route }) {
+  const { item } = route.params;
+
+  const renderSteps = (steps, depth = 1) =>
+    steps.map((step, idx) => (
+      <View key={idx} style={[styles.stepBlock, { marginLeft: depth * 10 }]}>
+        <Text style={styles.stepText}>- {step.text}</Text>
+        <Text style={styles.timestamp}>{new Date(step.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+        {step.steps?.length > 0 && renderSteps(step.steps, depth + 1)}
+      </View>
+    ));
+
+  return (
+    <ScrollView contentContainerStyle={styles.focusContainer}>
+      <Text style={styles.focusTitle}>🎯 Focus</Text>
+      <Text style={styles.threadText}>{item.text}</Text>
+      <Text style={styles.timestamp}>{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+      {item.steps?.length > 0 && renderSteps(item.steps)}
+    </ScrollView>
   );
 }
 
@@ -315,4 +361,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendText: { color: '#fff', fontWeight: 'bold' },
+  focusContainer: { padding: 20, backgroundColor: '#fff' },
+  focusTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 10 },
 });
