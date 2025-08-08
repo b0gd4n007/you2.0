@@ -1,14 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  Dimensions,
+  View, Text, TextInput, TouchableOpacity, ScrollView, Modal,
+  StyleSheet, KeyboardAvoidingView, Platform, Dimensions
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Provider as PaperProvider, Checkbox, Menu } from 'react-native-paper';
@@ -17,14 +10,14 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
 const Stack = createNativeStackNavigator();
+const SCREEN_WIDTH = Dimensions.get('window').width;
 
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <PaperProvider>
-        <SafeAreaView style={{ flex: 1 }} edges={['bottom', 'left', 'right']}>
+        <SafeAreaView style={{ flex: 1 }}>
           <NavigationContainer>
             <Stack.Navigator screenOptions={{ headerShown: false }}>
               <Stack.Screen name="Main" component={TaskApp} />
@@ -43,50 +36,42 @@ function TaskApp({ navigation }) {
   const [expandedThreads, setExpandedThreads] = useState({});
   const [collapsedSteps, setCollapsedSteps] = useState({});
   const [threads, setThreads] = useState({ baseline: [], execution: [], creative: [] });
-  const [archived, setArchived] = useState({ baseline: [], execution: [], creative: [] });
-  const [hideCompleted, setHideCompleted] = useState({ baseline: false, execution: false, creative: false });
   const [menuVisible, setMenuVisible] = useState(false);
+  const [overlayMenuVisible, setOverlayMenuVisible] = useState(false);
+  const [selectedItemPath, setSelectedItemPath] = useState(null);
+  const [selectedLevel, setSelectedLevel] = useState(null);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
-  const [selectedThread, setSelectedThread] = useState(null);
+  const [baselineLevel, setBaselineLevel] = useState('Medium');
+  const [focusedItems, setFocusedItems] = useState([]);
 
   useEffect(() => {
-    const loadData = async () => {
+    const load = async () => {
       const stored = await AsyncStorage.getItem('you2_threads');
-      const archivedStored = await AsyncStorage.getItem('you2_archived');
+      const storedFocus = await AsyncStorage.getItem('you2_focus');
       if (stored) setThreads(JSON.parse(stored));
-      if (archivedStored) setArchived(JSON.parse(archivedStored));
+      if (storedFocus) setFocusedItems(JSON.parse(storedFocus));
     };
-    loadData();
+    load();
   }, []);
 
   useEffect(() => {
     AsyncStorage.setItem('you2_threads', JSON.stringify(threads));
-    AsyncStorage.setItem('you2_archived', JSON.stringify(archived));
-  }, [threads, archived]);
+  }, [threads]);
 
-  const formatTime = (timestamp) => {
-    const d = new Date(timestamp);
-    if (isNaN(d.getTime())) return '';
-    return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-  };
+  useEffect(() => {
+    AsyncStorage.setItem('you2_focus', JSON.stringify(focusedItems));
+  }, [focusedItems]);
 
-  const toggleLevel = (level) => {
-    setExpandedLevel(expandedLevel === level ? null : level);
-  };
-
-  const toggleThread = (index) => {
-    setExpandedThreads((prev) => ({ ...prev, [index]: !prev[index] }));
-  };
-
-  const toggleHideCompleted = (level) => {
-    setHideCompleted((prev) => ({ ...prev, [level]: !prev[level] }));
+  const formatTime = (ts) => {
+    const d = new Date(ts);
+    return isNaN(d) ? '' : `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
   };
 
   const handleSend = () => {
     if (!inputText.trim() || !expandedLevel) return;
     const updated = { ...threads };
     const threadIndex = threads[expandedLevel].findIndex((_, i) => expandedThreads[i]);
-    const newItem = { text: inputText.trim(), timestamp: Date.now(), steps: [], completed: false };
+    const newItem = { text: inputText.trim(), timestamp: Date.now(), completed: false, steps: [] };
 
     if (threadIndex !== -1) {
       updated[expandedLevel][threadIndex].steps.push(newItem);
@@ -98,101 +83,120 @@ function TaskApp({ navigation }) {
     setInputText('');
   };
 
-  const toggleCollapse = (pathString) => {
-    setCollapsedSteps((prev) => ({ ...prev, [pathString]: !prev[pathString] }));
-  };
-
-  const toggleCheckbox = (path) => {
+  const toggleCheckbox = (level, path) => {
     const updated = { ...threads };
-    let node = updated[expandedLevel];
+    let node = updated[level];
     for (let i = 0; i < path.length - 1; i++) node = node[path[i]].steps;
-    const step = node[path[path.length - 1]];
-    step.completed = !step.completed;
+    node[path.at(-1)].completed = !node[path.at(-1)].completed;
     setThreads(updated);
   };
 
-  const archiveThread = () => {
-    if (!selectedThread) return;
-    const { level, index } = selectedThread;
-    const updated = { ...threads };
-    const archivedCopy = { ...archived };
-    const [thread] = updated[level].splice(index, 1);
-    archivedCopy[level].push(thread);
-    setThreads(updated);
-    setArchived(archivedCopy);
-    setMenuVisible(false);
+  const toggleLevel = (level) => {
+    setExpandedLevel((prev) => (prev === level ? null : level));
   };
 
-  const deleteThread = () => {
-    if (!selectedThread) return;
-    const { level, index } = selectedThread;
-    const updated = { ...threads };
-    updated[level].splice(index, 1);
-    setThreads(updated);
-    setMenuVisible(false);
+  const toggleThread = (index) => {
+    setExpandedThreads((prev) => ({ ...prev, [index]: !prev[index] }));
   };
 
-  const openMenu = (event, level, index) => {
-    setSelectedThread({ level, index });
+  const openMenu = (event, level, path) => {
     const { pageX: x, pageY: y } = event.nativeEvent;
+    setSelectedItemPath(path);
+    setSelectedLevel(level);
     setMenuPosition({ x, y });
     setMenuVisible(true);
   };
 
-  const focusThread = () => {
-    if (!selectedThread) return;
-    const { level, index } = selectedThread;
-    const thread = threads[level][index];
-    setMenuVisible(false);
-    navigation.navigate('Focus', { item: thread });
+  const focusItem = (level, path) => {
+    const deepCopy = JSON.parse(JSON.stringify(threads));
+    let node = deepCopy[level];
+    for (let i = 0; i < path.length; i++) node = node[path[i]]?.steps ?? node[path[i]];
+    const target = node;
+    const newFocus = { level, path, text: target.text, timestamp: target.timestamp };
+    setFocusedItems((prev) => [...prev, newFocus]);
+    navigation.navigate('Focus', {
+      index: focusedItems.length,
+      all: [...focusedItems, newFocus],
+      threads,
+      update: setThreads,
+      removeFocus: (i) => setFocusedItems(prev => prev.filter((_, j) => j !== i))
+    });
   };
-  const RenderSteps = ({ steps, path = [], depth = 1 }) =>
+
+  const deleteItem = () => {
+    if (!selectedItemPath) return;
+    const updated = { ...threads };
+    let node = updated[selectedLevel];
+    for (let i = 0; i < selectedItemPath.length - 1; i++) node = node[selectedItemPath[i]].steps;
+    node.splice(selectedItemPath.at(-1), 1);
+    setThreads(updated);
+    setMenuVisible(false);
+  };
+
+  const RenderSteps = ({ steps, level, path = [], depth = 1 }) =>
     steps.map((step, idx) => {
       const currentPath = [...path, idx];
-      const pathString = currentPath.join('-');
-      const isCollapsed = collapsedSteps[pathString];
+      const id = currentPath.join('-');
+      const isCollapsed = collapsedSteps[id];
 
       return (
-        <View key={idx} style={[styles.stepBlock, { marginLeft: depth * 10 }]}>
-          <View style={styles.stepHeader}>
-            {step.steps.length > 0 && (
-              <TouchableOpacity onPress={() => toggleCollapse(pathString)} style={styles.collapseToggle}>
-                <Text style={{ fontSize: 16, fontWeight: 'bold' }}>{isCollapsed ? '+' : '-'}</Text>
-              </TouchableOpacity>
-            )}
+        <TouchableOpacity key={id} onLongPress={(e) => openMenu(e, level, currentPath)}>
+          <View style={[styles.stepBlock, { marginLeft: depth * 10 }]}>
             <View style={styles.stepRow}>
               <Checkbox
                 status={step.completed ? 'checked' : 'unchecked'}
-                onPress={() => toggleCheckbox(currentPath)}
+                onPress={() => toggleCheckbox(level, currentPath)}
               />
               <View style={{ flex: 1 }}>
                 <Text style={styles.stepText}>{step.text}</Text>
                 <Text style={styles.timestamp}>{formatTime(step.timestamp)}</Text>
               </View>
             </View>
+            {step.steps?.length > 0 && !isCollapsed && (
+              <RenderSteps steps={step.steps} level={level} path={currentPath} depth={depth + 1} />
+            )}
           </View>
-
-          {!isCollapsed && step.steps?.length > 0 && (
-            <RenderSteps steps={step.steps} path={currentPath} depth={depth + 1} />
-          )}
-        </View>
+        </TouchableOpacity>
       );
     });
-
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-    >
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <View style={styles.headerRow}>
+        <TouchableOpacity onPress={() => setOverlayMenuVisible(true)} style={styles.menuButton}>
+          <Text style={styles.menuButtonText}>☰</Text>
+        </TouchableOpacity>
+        <View style={styles.gaugeContainer}>
+          {['Low', 'Medium', 'High'].map(level => (
+            <TouchableOpacity
+              key={level}
+              onPress={() => setBaselineLevel(level)}
+              style={[
+                styles.gaugeBlock,
+                {
+                  backgroundColor:
+                    level === 'Low' ? '#f99' :
+                    level === 'Medium' ? '#ff9' : '#9f9',
+                  opacity: baselineLevel === level ? 1 : 0.4,
+                }
+              ]}
+            >
+              <Text style={styles.gaugeText}>{level}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
       <Menu
         visible={menuVisible}
         onDismiss={() => setMenuVisible(false)}
         anchor={{ x: menuPosition.x, y: menuPosition.y }}
       >
-        <Menu.Item onPress={archiveThread} title="🗂 Archive" />
-        <Menu.Item onPress={deleteThread} title="🗑 Delete" />
-        <Menu.Item onPress={focusThread} title="🎯 Focus" />
+        <Menu.Item title="🗂 Archive (todo)" onPress={() => setMenuVisible(false)} />
+        <Menu.Item title="🗑 Delete" onPress={deleteItem} />
+        <Menu.Item title="🎯 Focus" onPress={() => {
+          setMenuVisible(false);
+          focusItem(selectedLevel, selectedItemPath);
+        }} />
       </Menu>
 
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
@@ -201,41 +205,23 @@ function TaskApp({ navigation }) {
             <TouchableOpacity onPress={() => toggleLevel(level)}>
               <Text style={styles.title}>{level.charAt(0).toUpperCase() + level.slice(1)}</Text>
             </TouchableOpacity>
-
-            {expandedLevel === level && (
-              <>
-                <TouchableOpacity onPress={() => toggleHideCompleted(level)} style={{ marginTop: 6 }}>
-                  <Text style={{ color: '#007AFF' }}>
-                    {hideCompleted[level] ? 'Show Completed' : 'Hide Completed'}
-                  </Text>
-                </TouchableOpacity>
-
-                {threads[level].map((thread, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    onLongPress={(e) => openMenu(e, level, index)}
-                    activeOpacity={1}
-                  >
-                    <View style={styles.threadBlock}>
-                      <View style={styles.threadHeader}>
-                        <TouchableOpacity onPress={() => toggleThread(index)}>
-                          <Text style={styles.plusButton}>
-                            {expandedThreads[index] ? '-' : '+'}
-                          </Text>
-                        </TouchableOpacity>
-                        <View>
-                          <Text style={styles.threadText}>• {thread.text}</Text>
-                          <Text style={styles.timestamp}>{formatTime(thread.timestamp)}</Text>
-                        </View>
-                      </View>
-                      {expandedThreads[index] && (
-                        <RenderSteps steps={thread.steps} path={[index]} />
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </>
-            )}
+            {expandedLevel === level &&
+              threads[level].map((thread, index) => (
+                <View key={index} style={styles.threadBlock}>
+                  <View style={styles.threadHeader}>
+                    <TouchableOpacity onPress={() => toggleThread(index)}>
+                      <Text style={styles.plusButton}>{expandedThreads[index] ? '-' : '+'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onLongPress={(e) => openMenu(e, level, [index])}>
+                      <Text style={styles.threadText}>• {thread.text}</Text>
+                      <Text style={styles.timestamp}>{formatTime(thread.timestamp)}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {expandedThreads[index] && (
+                    <RenderSteps steps={thread.steps} level={level} path={[index]} />
+                  )}
+                </View>
+              ))}
           </View>
         ))}
       </ScrollView>
@@ -258,28 +244,117 @@ function TaskApp({ navigation }) {
           <Text style={styles.sendText}>Send</Text>
         </TouchableOpacity>
       </View>
+
+      <Modal visible={overlayMenuVisible} transparent animationType="slide">
+        <View style={styles.overlay}>
+          <View style={styles.overlayMenu}>
+            <Text style={styles.overlayTitle}>Menu</Text>
+            <TouchableOpacity><Text style={styles.overlayItem}>Settings</Text></TouchableOpacity>
+            <TouchableOpacity><Text style={styles.overlayItem}>FAQ</Text></TouchableOpacity>
+            <TouchableOpacity><Text style={styles.overlayItem}>Connect</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => setOverlayMenuVisible(false)}>
+              <Text style={styles.overlayItem}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
 
+// FocusScreen for swiping between items
 function FocusScreen({ route }) {
-  const { item } = route.params;
+  const { index, all, threads, update, removeFocus } = route.params;
+  const [currentIndex, setCurrentIndex] = useState(index);
+  const [newStep, setNewStep] = useState('');
 
-  const renderSteps = (steps, depth = 1) =>
-    steps.map((step, idx) => (
-      <View key={idx} style={[styles.stepBlock, { marginLeft: depth * 10 }]}>
-        <Text style={styles.stepText}>- {step.text}</Text>
-        <Text style={styles.timestamp}>{new Date(step.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
-        {step.steps?.length > 0 && renderSteps(step.steps, depth + 1)}
-      </View>
-    ));
+  const getTarget = () => {
+    const { level, path } = all[currentIndex];
+    let node = threads[level];
+    for (let i = 0; i < path.length; i++) node = node[path[i]]?.steps ?? node[path[i]];
+    return node;
+  };
+
+  const addStep = () => {
+    const { level, path } = all[currentIndex];
+    const updated = JSON.parse(JSON.stringify(threads));
+    let node = updated[level];
+    for (let i = 0; i < path.length; i++) node = node[path[i]]?.steps ?? node[path[i]];
+    node.steps = node.steps || [];
+    node.steps.push({
+      text: newStep.trim(),
+      completed: false,
+      timestamp: Date.now(),
+      steps: [],
+    });
+    update(updated);
+    setNewStep('');
+  };
+
+  const toggle = (stepPath) => {
+    const { level, path } = all[currentIndex];
+    const updated = JSON.parse(JSON.stringify(threads));
+    let node = updated[level];
+    const full = [...path, ...stepPath];
+    for (let i = 0; i < full.length - 1; i++) node = node[full[i]].steps;
+    node[full.at(-1)].completed = !node[full.at(-1)].completed;
+    update(updated);
+  };
+
+  const render = (steps, base = []) =>
+    steps.map((s, idx) => {
+      const full = [...base, idx];
+      return (
+        <View key={idx} style={[styles.stepBlock, { marginLeft: full.length * 10 }]}>
+          <View style={styles.stepRow}>
+            <Checkbox
+              status={s.completed ? 'checked' : 'unchecked'}
+              onPress={() => toggle(full)}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.stepText}>{s.text}</Text>
+              <Text style={styles.timestamp}>
+                {new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </Text>
+            </View>
+          </View>
+          {s.steps?.length > 0 && render(s.steps, full)}
+        </View>
+      );
+    });
+
+  const target = getTarget();
 
   return (
     <ScrollView contentContainerStyle={styles.focusContainer}>
       <Text style={styles.focusTitle}>🎯 Focus</Text>
-      <Text style={styles.threadText}>{item.text}</Text>
-      <Text style={styles.timestamp}>{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
-      {item.steps?.length > 0 && renderSteps(item.steps)}
+      <Text style={styles.threadText}>{target.text}</Text>
+      <Text style={styles.timestamp}>
+        {new Date(target.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+      </Text>
+      {target.steps?.length > 0 && render(target.steps)}
+      <View style={styles.inputBar}>
+        <TextInput
+          style={styles.input}
+          value={newStep}
+          onChangeText={setNewStep}
+          placeholder="Add subtask..."
+        />
+        <TouchableOpacity onPress={addStep} style={styles.sendButton}>
+          <Text style={styles.sendText}>Add</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 10 }}>
+        <TouchableOpacity onPress={() => setCurrentIndex((i) => Math.max(0, i - 1))}>
+          <Text>⬅️ Prev</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => removeFocus(currentIndex)}>
+          <Text>🗑 Remove</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setCurrentIndex((i) => Math.min(all.length - 1, i + 1))}>
+          <Text>Next ➡️</Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
@@ -287,16 +362,35 @@ function FocusScreen({ route }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
   scroll: { padding: 16, paddingBottom: 80 },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 8,
+  },
+  menuButton: { padding: 10 },
+  menuButtonText: { fontSize: 24 },
+  gaugeContainer: {
+    flexDirection: 'row',
+    gap: 6,
+    marginRight: 12,
+  },
+  gaugeBlock: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+  gaugeText: {
+    color: '#000',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
   block: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 12,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-    elevation: 2,
   },
   title: { fontSize: 18, fontWeight: 'bold', color: '#333' },
   threadBlock: {
@@ -322,15 +416,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#e0e0e0',
     padding: 8,
     borderRadius: 6,
-  },
-  stepHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  collapseToggle: {
-    marginRight: 6,
-    paddingHorizontal: 4,
   },
   stepRow: {
     flexDirection: 'row',
@@ -361,6 +446,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendText: { color: '#fff', fontWeight: 'bold' },
-  focusContainer: { padding: 20, backgroundColor: '#fff' },
+  focusContainer: { padding: 20, backgroundColor: '#fff', paddingBottom: 80 },
   focusTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 10 },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'flex-start',
+  },
+  overlayMenu: {
+    backgroundColor: 'white',
+    padding: 24,
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    width: '100%',
+  },
+  overlayTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 16 },
+  overlayItem: { fontSize: 16, marginBottom: 10 },
 });
