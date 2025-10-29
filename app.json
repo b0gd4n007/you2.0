@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "You 2.0",
+    "slug": "you20",
+    "version": "1.0.0",
+    "main": "App.js",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+
+    "ios": {
+      "bundleIdentifier": "com.yourname.you20",
+      "supportsTablet": true,
+      "buildNumber": "1.0.0"
+    },
+
+    "android": {
+      "package": "com.yourname.you20",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true
+    },
+
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
