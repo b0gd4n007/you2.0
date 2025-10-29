@@ -2,6 +2,7 @@
 import OpenAI from "openai";
 
 const client = new OpenAI({
+  apiKey: "your_key" // use your test key for now
 });
 
 const MODEL = "gpt-4o-mini";
