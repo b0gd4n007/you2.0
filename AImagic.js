@@ -2,7 +2,7 @@
 import OpenAI from "openai";
 
 const client = new OpenAI({
-  apiKey: "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", // use your test key for now
+  apiKey: "" // use your test key for now
 });
 
 const MODEL = "gpt-4o-mini";
