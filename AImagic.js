@@ -1,8 +1,9 @@
-// AImagic.js
+
+// AImagic.js (hardened)
 import OpenAI from 'openai';
 
 const client = new OpenAI({
-  apiKey: "secret_key", // don't commit. local only.
+  apiKey: process.env.EXPO_PUBLIC_OPENAI_API_KEY || "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", // Replace for local dev
 });
 
 const MODEL = "gpt-4o-mini";
@@ -72,6 +73,11 @@ as a new top-level thread in baseline:
 Output ONLY the JSON array. No prose.
 `;
 
+function stripCodeFences(s) {
+  if (!s) return s;
+  return s.replace(/^```(json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+}
+
 export async function askAIToEdit({ threads, instruction }) {
   // Build a "Thread Directory" summary to help targeting by name
   function summarizeLevel(levelName) {
@@ -108,10 +114,11 @@ Return ONLY the JSON ARRAY of instruction objects as described.
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
+      temperature: 0.2,
     });
 
-    const raw = completion.choices[0].message.content;
-    console.log("RAW AI:", raw);
+    let raw = completion.choices?.[0]?.message?.content || '[]';
+    raw = stripCodeFences(raw);
 
     // Try parse normally
     let parsed;
@@ -129,20 +136,17 @@ Return ONLY the JSON ARRAY of instruction objects as described.
         try {
           objs.push(JSON.parse(p));
         } catch (e2) {
-          console.log("Skipping bad chunk:", p);
+          // skip
         }
       }
       parsed = objs;
     }
 
-    if (!Array.isArray(parsed)) {
-      parsed = [parsed];
-    }
-
+    if (!Array.isArray(parsed)) parsed = [parsed];
     parsed = parsed.filter(Boolean);
     return parsed;
   } catch (err) {
-    console.log("askAIToEdit error:", err);
+    console.log("askAIToEdit error:", err?.message || err);
     return [];
   }
 }

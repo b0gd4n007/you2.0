@@ -4,6 +4,7 @@
     "slug": "you20",
     "version": "1.0.0",
     "main": "App.js",
+    
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
