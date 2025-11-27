@@ -70,130 +70,6 @@ import {
 
 const SCREEN_W = Dimensions.get('window').width;
 
-// ---- Local helpers for delete / rename by title ----
-
-// ---- Local helpers for delete / rename by title ----
-
-// ---- Local helpers for delete / rename / mark-done by title ----
-
-function normalizeTitle(text) {
-  return (text || '').toString().trim().toLowerCase();
-}
-
-function cloneThreadsState(threads) {
-  if (!threads || typeof threads !== 'object') {
-    return { baseline: [], execution: [], creative: [] };
-  }
-  return JSON.parse(JSON.stringify(threads));
-}
-
-function deleteByTitle(threads, title) {
-  const titleNorm = normalizeTitle(title);
-  const cloned = cloneThreadsState(threads);
-  let changed = false;
-
-  function walkAndDelete(arr) {
-    if (!Array.isArray(arr)) return false;
-    for (let i = arr.length - 1; i >= 0; i--) {
-      const node = arr[i];
-      if (normalizeTitle(node?.text) === titleNorm) {
-        arr.splice(i, 1);
-        return true;
-      }
-      if (Array.isArray(node?.steps) && walkAndDelete(node.steps)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  for (const lvl of ['baseline', 'execution', 'creative']) {
-    if (walkAndDelete(cloned[lvl])) {
-      changed = true;
-      break;
-    }
-  }
-
-  return { state: changed ? cloned : threads, changed };
-}
-
-function renameByTitle(threads, oldTitle, newTitle) {
-  const oldNorm = normalizeTitle(oldTitle);
-  const newClean = (newTitle || '').toString().trim();
-  if (!newClean) return { state: threads, changed: false };
-
-  const cloned = cloneThreadsState(threads);
-  let changed = false;
-
-  function walkAndRename(arr) {
-    if (!Array.isArray(arr)) return false;
-    for (let i = 0; i < arr.length; i++) {
-      const node = arr[i];
-      if (normalizeTitle(node?.text) === oldNorm) {
-        node.text = newClean;
-        return true;
-      }
-      if (Array.isArray(node?.steps) && walkAndRename(node.steps)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  for (const lvl of ['baseline', 'execution', 'creative']) {
-    if (walkAndRename(cloned[lvl])) {
-      changed = true;
-      break;
-    }
-  }
-
-  return { state: changed ? cloned : threads, changed };
-}
-
-function toggleDoneByTitle(threads, title) {
-  const titleNorm = normalizeTitle(title);
-  const cloned = cloneThreadsState(threads);
-  let changed = false;
-
-  function markNodeDone(node) {
-    // set everything, so whatever the UI reads will flip
-    node.done = true;
-    node.completed = true;
-    node.isCompleted = true;
-    node.checked = true;
-  }
-
-  function walkAndToggle(arr) {
-    if (!Array.isArray(arr)) return false;
-    for (let i = 0; i < arr.length; i++) {
-      const node = arr[i];
-
-      if (normalizeTitle(node?.text) === titleNorm) {
-        markNodeDone(node);
-        return true;
-      }
-
-      if (Array.isArray(node?.steps) && walkAndToggle(node.steps)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  for (const lvl of ['baseline', 'execution', 'creative']) {
-    if (walkAndToggle(cloned[lvl])) {
-      changed = true;
-      break;
-    }
-  }
-
-  return { state: changed ? cloned : threads, changed };
-}
-
-
-
-
-
 export default function TaskScreen({ navigation }) {
   // threads keyed by level
   const [threads, setThreads] = useState({ baseline: [], execution: [], creative: [] });
@@ -217,6 +93,9 @@ export default function TaskScreen({ navigation }) {
   const [aiText, setAiText] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
   const [aiResult, setAiResult] = useState('');
+  // Chat overlay
+  const [chatVisible, setChatVisible] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
   // Manual input
   const [manualText, setManualText] = useState('');
   // Date/time picker
@@ -327,106 +206,72 @@ export default function TaskScreen({ navigation }) {
     setTargetPath(null);
   }
 
-        async function handleAISend() {
-    const instrRaw = aiText.trim();
-    if (!instrRaw) return;
-
-    // Use the original text for patterns, with case-insensitive regex
-    // so we don't destroy titles' casing.
-
-    // ---------- LOCAL DELETE ----------
-    const deleteMatch = instrRaw.match(/^(delete|remove)\s+(.+)$/i);
-    if (deleteMatch) {
-      const titleToDelete = deleteMatch[2].trim();
-      const { state, changed } = deleteByTitle(threads, titleToDelete);
-      setThreads(state);
-      setAiText('');
-      setAiResult(changed ? 'changed 1 item' : 'no changes');
-      return;
-    }
-
-    // ---------- LOCAL RENAME ----------
-    // supports: rename X to Y, change X to Y, edit X to Y
-    const renameMatch = instrRaw.match(/^(rename|change|edit)\s+(.+?)\s+to\s+(.+)$/i);
-    if (renameMatch) {
-      const oldTitle = renameMatch[2].trim();
-      const newTitle = renameMatch[3].trim();
-      const { state, changed } = renameByTitle(threads, oldTitle, newTitle);
-      setThreads(state);
-      setAiText('');
-      setAiResult(changed ? 'changed 1 item' : 'no changes');
-      return;
-    }
-
-    // ---------- LOCAL MARK-AS-DONE ----------
-    // supports:
-    //  - mark sink as done
-    //  - mark sink done
-    //  - complete sink
-    //  - finish sink
-    let markDoneMatch =
-      instrRaw.match(/^mark\s+(.+?)\s+as\s+done$/i) ||
-      instrRaw.match(/^mark\s+(.+?)\s+done$/i);
-
-    if (!markDoneMatch) {
-      const alt = instrRaw.match(/^(complete|finish)\s+(.+)$/i);
-      if (alt) {
-        // group 2 is the title in this case
-        markDoneMatch = ['full', alt[2]];
-      }
-    }
-
-    if (markDoneMatch) {
-      const titleToMark = (markDoneMatch[1] || '').trim();
-      const { state, changed } = toggleDoneByTitle(threads, titleToMark);
-      setThreads(state);
-      setAiText('');
-      setAiResult(changed ? 'changed 1 item' : 'no changes');
-      return;
-    }
-
-    // ---------- FALL BACK TO AI FOR ADD / NESTED LOGIC ----------
+  async function handleAISend() {
+    const instr = aiText.trim();
+    if (!instr) return;
     if (aiBusy) return;
+
+    // Push user message into chat log (if chat is visible or later opened)
+    setChatMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        role: 'user',
+        text: instr,
+      },
+    ]);
+
     setAiBusy(true);
-
     try {
-      const hiInstructions = await askAIToEdit({ threads, instruction: instrRaw });
-
+      // Ask external AI service for plan
+      const plan = await askAIToEdit({ threads, instruction: instr });
+      // Map into reducer instructions
+      const ops = Array.isArray(plan)
+        ? plan.flatMap((ins) => adaptAIMagicToReducer(threads, ins))
+        : [];
       let stateObj = threads;
-      let changed = 0;
-      const inferred = inferTargetDateFromText(instrRaw);
-      const inferredTs = inferred?.ts ?? null;
-
-      if (Array.isArray(hiInstructions)) {
-        for (const hi of hiInstructions) {
-          // IMPORTANT: adapt using the *current* state so later ops
-          // see earlier changes in this same instruction.
-          const ops = adaptAIMagicToReducer(stateObj, hi) || [];
-          for (const op of ops) {
-            const before = JSON.stringify(stateObj);
-            stateObj = applyEditInstructionToThreads(op, stateObj, inferredTs);
-            if (before !== JSON.stringify(stateObj)) changed++;
-          }
-        }
+      let added = 0;
+      let inferredTs = inferTargetDateFromText(instr).ts;
+      for (const op of ops) {
+        const before = JSON.stringify(stateObj);
+        stateObj = applyEditInstructionToThreads(op, stateObj, inferredTs);
+        if (before !== JSON.stringify(stateObj)) added++;
       }
-
       setThreads(stateObj);
+
+      // Short natural-language reply for the chat overlay
+      const replyText = added
+        ? `Okay. I updated your tasks and added ${added} item${added > 1 ? 's' : ''}.`
+        : 'I read that, but there was nothing clear to change in your tasks.';
+
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          text: replyText,
+        },
+      ]);
+
       setAiResult(
-        changed ? `changed ${changed} item${changed > 1 ? 's' : ''}` : 'no changes'
+        added ? `added ${added} item${added > 1 ? 's' : ''}` : 'no changes'
       );
       setAiText('');
     } catch (err) {
-      console.error('[AI] error in handleAISend', err);
+      console.error('[AI] error', err);
       setAiResult('AI parse failed');
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          text: 'Something went wrong trying to update your tasks.',
+        },
+      ]);
     } finally {
       setAiBusy(false);
     }
   }
-
-
-
-
-
   // Voice handlers are provided by useVoice hook.  They are
   // destructured at initialization above.
 
@@ -691,22 +536,19 @@ export default function TaskScreen({ navigation }) {
       <View style={styles.aiBar}>
         {voiceAvailable && (
           <TouchableOpacity
-            onPress={listening ? stopMic : startMic}
+            onPress={() => setChatVisible(true)}
             style={[styles.aiButton, { marginRight: 8 }, listening && { opacity: 0.6 }]}
           >
             <Text style={styles.aiButtonText}>{listening ? '⏹' : '🎤'}</Text>
           </TouchableOpacity>
         )}
-        <TextInput
-          style={styles.aiInput}
-          value={aiText}
-          onChangeText={setAiText}
-          placeholder={aiBusy ? 'Working…' : "AI: 'add fix heater by Thursday under baseline'"}
-          editable={!aiBusy}
-          onSubmitEditing={handleAISend}
-        />
-        <TouchableOpacity style={[styles.aiButton, aiBusy && { opacity: 0.4 }]} disabled={aiBusy} onPress={handleAISend}>
-          <Text style={styles.aiButtonText}>{aiBusy ? '...' : 'AI Apply'}</Text>
+        <TouchableOpacity
+          style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
+          onPress={() => setChatVisible(true)}
+        >
+          <Text style={{ color: '#9ca3af' }}>
+            {aiBusy ? 'Working…' : "Talk to AI about what’s on your mind…"}
+          </Text>
         </TouchableOpacity>
       </View>
       <View style={styles.inputBar}>
@@ -720,6 +562,96 @@ export default function TaskScreen({ navigation }) {
         />
         <TouchableOpacity onPress={handleManualAdd} style={styles.sendButton}><Text style={styles.sendText}>Add</Text></TouchableOpacity>
       </View>
+
+      {chatVisible && (
+        <View
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: '65%',
+            backgroundColor: '#050816',
+            borderTopLeftRadius: 18,
+            borderTopRightRadius: 18,
+            paddingTop: 8,
+            paddingHorizontal: 12,
+            shadowColor: '#000',
+            shadowOpacity: 0.4,
+            shadowRadius: 12,
+            elevation: 10,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 4,
+            }}
+          >
+            <Text style={{ color: '#e5e7eb', fontWeight: '600' }}>AI</Text>
+            <TouchableOpacity onPress={() => setChatVisible(false)}>
+              <Text style={{ color: '#9ca3af' }}>Close</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={{ flex: 1, marginBottom: 8 }}>
+            {chatMessages.map((m) => (
+              <View
+                key={m.id}
+                style={{
+                  alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+                  backgroundColor:
+                    m.role === 'user' ? '#1d4ed8' : 'rgba(31, 41, 55, 0.95)',
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  borderRadius: 12,
+                  marginVertical: 3,
+                  maxWidth: '80%',
+                }}
+              >
+                <Text style={{ color: '#f9fafb' }}>{m.text}</Text>
+              </View>
+            ))}
+          </ScrollView>
+
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingBottom: 8,
+            }}
+          >
+            <TextInput
+              style={{
+                flex: 1,
+                paddingHorizontal: 10,
+                paddingVertical: 8,
+                borderRadius: 999,
+                backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                color: '#e5e7eb',
+              }}
+              placeholder="Tell it what's on your mind..."
+              placeholderTextColor="#6b7280"
+              value={aiText}
+              onChangeText={setAiText}
+              onSubmitEditing={handleAISend}
+              editable={!aiBusy}
+            />
+            <TouchableOpacity
+              onPress={handleAISend}
+              disabled={aiBusy}
+              style={{ marginLeft: 8, opacity: aiBusy ? 0.4 : 1 }}
+            >
+              <Text style={{ color: '#bfdbfe', fontWeight: '600' }}>
+                {aiBusy ? '...' : 'Send'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
     </KeyboardAvoidingView>
   );
 }

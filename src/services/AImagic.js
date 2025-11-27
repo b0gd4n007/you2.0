@@ -17,7 +17,6 @@ const API_URL = 'https://api.openai.com/v1/chat/completions';
 const MODEL = 'gpt-4o-mini';
 
 // TODO: move this out of code. For now keep it so it actually runs.
-const API_KEY = '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';
 
 export async function askAIToEdit({ threads, instruction }) {
   // If you forgot to set the key, just don't even call the API
