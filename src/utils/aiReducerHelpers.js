@@ -190,7 +190,11 @@ export function adaptAIMagicToReducer(state, ins) {
   const out = [];
   const DEFAULT_LEVEL = 'execution';
   const safeState = state || { baseline: [], execution: [], creative: [] };
-  if (!ins || ins.action !== 'add') return out;
+  if (!ins || !ins.action) return out;
+  if (ins.action !== 'add') {
+    out.push(ins);
+    return out;
+  }
   if (ins.type === 'thread') {
     out.push({ action: 'add', level: DEFAULT_LEVEL, path: [], mode: 'thread', text: ins.title, targetDate: ins.targetDate ?? null });
     return out;

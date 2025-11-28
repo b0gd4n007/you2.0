@@ -31,8 +31,26 @@ export default function ThreadCard({
   moveToBottom,
 }) {
   const currentPath = [index];
+
+  // Compute completion / overdue state for the thread
+  const now = new Date();
+  const steps = Array.isArray(thread.steps) ? thread.steps : [];
+  const allStepsCompleted = steps.length > 0 && steps.every(s => s.completed);
+  const isThreadCompleted = allStepsCompleted;
+  const anyStepOverdue = steps.some(s => s.targetDate && !s.completed && new Date(s.targetDate) < now);
+  const isThreadOverdue =
+    !isThreadCompleted &&
+    ((thread.targetDate && new Date(thread.targetDate) < now) || anyStepOverdue);
+
+  const threadStatusStyle = isThreadCompleted
+    ? styles.threadCompleted
+    : isThreadOverdue
+    ? styles.threadOverdue
+    : null;
+
   return (
-    <View key={`${level}-${index}`} style={styles.threadBlock}>
+    <View key={`${level}-${index}`} style={[styles.threadBlock, threadStatusStyle]}>
+
       <View style={[styles.threadHeader, { alignItems: 'center' }]}> 
         {/* Expand/collapse button */}
         <TouchableOpacity onPress={() => toggleExpand(level, index)}>

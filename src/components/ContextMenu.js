@@ -11,10 +11,12 @@ export default function ContextMenu({
   onDismiss,
   anchor,
   hasTarget,
+  hasRepeat,
   onAddSubtask,
   onEdit,
   onOpenDatePicker,
   onClearTargetDate,
+  onToggleRepeat,
   onDelete,
   canPromote,
   onPromote,
@@ -35,6 +37,10 @@ export default function ContextMenu({
       {hasTarget && (
         <Menu.Item title="❌ Clear target date" onPress={onClearTargetDate} />
       )}
+      <Menu.Item
+        title={hasRepeat ? '🔁 Stop weekly repeat' : '🔁 Repeat weekly'}
+        onPress={onToggleRepeat}
+      />
       <Menu.Item title="🗑 Delete" onPress={onDelete} />
       {canPromote && <Menu.Item title="⬆️ Promote to thread" onPress={onPromote} />}
       <Menu.Item title="🎯 Focus" onPress={onFocus} />

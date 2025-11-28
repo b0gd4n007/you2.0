@@ -69,7 +69,15 @@ export default function StepsList({
         onSwipeableLeftOpen={onSwipeLeft}
         onSwipeableRightOpen={onSwipeRight}
       >
-        <View style={[styles.stepBlock, { marginLeft: depth * 10 }]}> 
+        <View
+          style={[
+            styles.stepBlock,
+            step.completed ? styles.stepCompleted : (step.targetDate && !step.completed && new Date(step.targetDate) < new Date())
+              ? styles.stepOverdue
+              : null,
+            { marginLeft: depth * 10 },
+          ]}
+        > 
           <View style={styles.stepRow}>
             {/* Disclosure chevron to collapse/expand */}
             <TouchableOpacity

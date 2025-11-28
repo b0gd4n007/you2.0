@@ -105,6 +105,7 @@ export default function TaskScreen({ navigation }) {
   const [pickerLevel, setPickerLevel] = useState(null);
   const [pickerPath, setPickerPath] = useState(null);
   const [pickerMode, setPickerMode] = useState('date');
+  const [tempDateOnly, setTempDateOnly] = useState(null);
 
   // Keep a ref to the current threads for move helpers.  We update
   // this in an effect so that closures created earlier can refer
@@ -538,57 +539,80 @@ export default function TaskScreen({ navigation }) {
         </View>
       </Modal>
             {/* Date/time picker */}
+            {/* Date/time picker */}
       {pickerVisible && (
-        <DateTimePicker
-          value={pickerDate}
-          mode={pickerMode}
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={(event, date) => {
-            const selected = date || pickerDate;
-            if (!selected || !pickerLevel || !pickerPath) {
-              setPickerVisible(false);
-              setPickerMode('date');
-              return;
-            }
+  <DateTimePicker
+    value={pickerDate || new Date()}
+    mode={pickerMode}
+    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+    onChange={(event, date) => {
+      const selected = date || pickerDate || new Date();
 
-            if (pickerMode === 'date') {
-              const current = pickerDate || new Date();
-              const merged = new Date(
-                selected.getFullYear(),
-                selected.getMonth(),
-                selected.getDate(),
-                current.getHours(),
-                current.getMinutes(),
-                0,
-                0,
-              );
-              setPickerDate(merged);
-              setPickerMode('time');
-            } else {
-              const base = pickerDate || new Date();
-              const combined = new Date(
-                base.getFullYear(),
-                base.getMonth(),
-                base.getDate(),
-                selected.getHours(),
-                selected.getMinutes(),
-                0,
-                0,
-              );
-              setTargetDateOnPath(
-                pickerLevel,
-                pickerPath,
-                combined.getTime(),
-                false, // not all-day
-              );
-              setPickerLevel(null);
-              setPickerPath(null);
-              setPickerVisible(false);
-              setPickerMode('date');
-            }
-          }}
-        />
-      )}
+      // Safety: if somehow we don't know what item we're editing, bail
+      if (!pickerLevel || !pickerPath) {
+        setPickerVisible(false);
+        setPickerMode('date');
+        setTempDateOnly(null);
+        return;
+      }
+
+      if (pickerMode === 'date') {
+        // STEP 1 — store only the calendar day, at midnight
+        const dayOnly = new Date(
+          selected.getFullYear(),
+          selected.getMonth(),
+          selected.getDate(),
+          0,
+          0,
+          0,
+          0,
+        );
+
+        setTempDateOnly(dayOnly);
+        setPickerDate(dayOnly);
+        setPickerMode('time'); // go to time selection, keep picker visible
+      } else {
+        // STEP 2 — merge the chosen time into the stored date
+        if (!tempDateOnly) {
+          setPickerVisible(false);
+          setPickerMode('date');
+          setPickerLevel(null);
+          setPickerPath(null);
+          setTempDateOnly(null);
+          return;
+        }
+
+        const base = tempDateOnly;
+        const final = new Date(
+          base.getFullYear(),
+          base.getMonth(),
+          base.getDate(),
+          selected.getHours(),
+          selected.getMinutes(),
+          0,
+          0,
+        );
+
+        // Persist as timestamp (no "now" nonsense anywhere)
+        setTargetDateOnPath(
+          pickerLevel,
+          pickerPath,
+          final.getTime(),
+          false, // not all-day
+        );
+
+        // Reset picker state
+        setPickerVisible(false);
+        setPickerMode('date');
+        setPickerLevel(null);
+        setPickerPath(null);
+        setTempDateOnly(null);
+      }
+    }}
+  />
+)}
+
+
 
       {/* AI and manual input bar with mic */}
       <View style={styles.aiBar}>

@@ -239,6 +239,24 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 10,
   },
+
+  // Status tints for tasks / threads
+  threadCompleted: {
+    backgroundColor: '#e6ffed',
+    borderColor: '#b7f0c0',
+  },
+  threadOverdue: {
+    backgroundColor: '#ffecec',
+    borderColor: '#ffb3b3',
+  },
+  stepCompleted: {
+    backgroundColor: '#e6ffed',
+    borderColor: '#b7f0c0',
+  },
+  stepOverdue: {
+    backgroundColor: '#fff0f0',
+    borderColor: '#ffc9c9',
+  },
 });
 
 export default styles;
